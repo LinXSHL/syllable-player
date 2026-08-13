@@ -1,0 +1,8 @@
+PySide6
+edge-tts
+pronouncing
+pyphen
+eng-to-ipa
+deep-translator
+requests
+
