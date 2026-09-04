@@ -1,43 +1,49 @@
-# -*- coding: utf-8 -*-
-"""本地缓存：每个单词一份 JSON（含音频/图片路径），二次查询完全离线。"""
+from __future__ import annotations
+
+import hashlib
 import json
-import os
+import threading
+from dataclasses import asdict
+from pathlib import Path
 
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CACHE_DIR = os.path.join(_BASE_DIR, "data", "cache")
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-
-def _json_path(word):
-    return os.path.join(CACHE_DIR, f"{word.lower()}.json")
+from .config import AppConfig, CACHE_ROOT
+from .models import WordLesson
 
 
-def load(word):
-    path = _json_path(word)
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        # 音频文件必须真实存在，否则视为缓存失效
-        audio = data.get("audio", {})
-        if audio.get("word") and not os.path.exists(audio["word"]):
+class LessonCache:
+    def __init__(self, root: Path = CACHE_ROOT) -> None:
+        self.root = root
+        self._lock = threading.Lock()
+
+    def directory_for(self, word: str, config: AppConfig) -> Path:
+        identity = {"word": word, **asdict(config)}
+        digest = hashlib.sha256(
+            json.dumps(identity, sort_keys=True).encode("utf-8")
+        ).hexdigest()[:16]
+        safe_word = word.replace("'", "_").replace("-", "_")
+        return self.root / f"{safe_word}-{digest}"
+
+    def load(self, word: str, config: AppConfig) -> WordLesson | None:
+        directory = self.directory_for(word, config)
+        metadata = directory / "lesson.json"
+        if not metadata.exists():
             return None
-        return data
-    except Exception:
-        return None
+        try:
+            lesson = WordLesson.from_dict(json.loads(metadata.read_text(encoding="utf-8")))
+            lesson.resolve_paths(directory)
+            paths = [Path(lesson.lesson_audio_path), Path(lesson.full_audio_path)]
+            paths.extend(Path(chunk.clip_path) for chunk in lesson.chunks)
+            if lesson.word != word or not lesson.chunks or any(not path.is_file() for path in paths):
+                return None
+            return lesson
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return None
 
-
-def save(word, data):
-    path = _json_path(word)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return path
-
-
-def list_cached_words():
-    words = []
-    for fn in sorted(os.listdir(CACHE_DIR)):
-        if fn.endswith(".json"):
-            words.append(fn[:-5])
-    return words
+    def save(self, lesson: WordLesson, directory: Path) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        payload = lesson.to_dict()
+        temp = directory / "lesson.json.tmp"
+        final = directory / "lesson.json"
+        with self._lock:
+            temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(final)

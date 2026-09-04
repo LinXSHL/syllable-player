@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syllable-player"
+version = "2.0.0"
+description = "Grapheme-phoneme aligned English pronunciation trainer"
+requires-python = ">=3.11"
+dependencies = [
+  "PySide6>=6.7,<7",
+  "av>=13,<17",
+  "cmudict>=1.0.31,<2",
+  "edge-tts>=7,<8",
+  "numpy>=1.26,<3",
+  "praatio>=6.2,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-qt>=4.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: requires Edge TTS, MFA and downloaded language models",
+]
+
+[tool.setuptools]
+packages = ["core", "ui"]

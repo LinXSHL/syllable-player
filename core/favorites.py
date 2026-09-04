@@ -1,44 +1,37 @@
-# -*- coding: utf-8 -*-
-"""收藏管理：data/favorites.json"""
+from __future__ import annotations
+
 import json
-import os
+import threading
+from pathlib import Path
 
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FAV_PATH = os.path.join(_BASE_DIR, "data", "favorites.json")
-
-
-def _load():
-    if not os.path.exists(FAV_PATH):
-        return []
-    try:
-        with open(FAV_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+from .config import CACHE_ROOT
 
 
-def _save(items):
-    os.makedirs(os.path.dirname(FAV_PATH), exist_ok=True)
-    with open(FAV_PATH, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=2)
+class FavoritesStore:
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or CACHE_ROOT / "user" / "favorites.json"
+        self._lock = threading.Lock()
 
+    def all(self) -> set[str]:
+        try:
+            values = json.loads(self.path.read_text(encoding="utf-8"))
+            return {str(value) for value in values}
+        except (OSError, ValueError, TypeError):
+            return set()
 
-def all():
-    return _load()
+    def contains(self, word: str) -> bool:
+        return word in self.all()
 
-
-def contains(word):
-    return word.lower() in _load()
-
-
-def toggle(word):
-    word = word.lower()
-    items = _load()
-    if word in items:
-        items.remove(word)
-        fav = False
-    else:
-        items.append(word)
-        fav = True
-    _save(items)
-    return fav
+    def toggle(self, word: str) -> bool:
+        with self._lock:
+            values = self.all()
+            active = word not in values
+            if active:
+                values.add(word)
+            else:
+                values.discard(word)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(sorted(values), ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(self.path)
+            return active

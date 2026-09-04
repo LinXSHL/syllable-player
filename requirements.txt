@@ -1,8 +1,7 @@
-PySide6
-edge-tts
-pronouncing
-pyphen
-eng-to-ipa
-deep-translator
-requests
-
+PySide6>=6.7,<7
+av>=13,<17
+cmudict>=1.0.31,<2
+edge-tts>=7,<8
+numpy>=1.26,<3
+praatio>=6.2,<7
+pytest>=8,<10
